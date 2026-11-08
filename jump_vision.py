@@ -130,25 +130,27 @@ def find_piece(data, w, h, template_path):
     head_height=max(p//tw for p in template_head)-min(p//tw for p in template_head)+1
     template_head_cx=(min(p%tw for p in template_head)+max(p%tw for p in template_head))/2
     head_top=min(p//tw for p in template_head)
-    for head in groups:
-        hx0,hx1=min(p%w for p in head),max(p%w for p in head)
-        hy0,hy1=min(p//w for p in head),max(p//w for p in head)
-        hw,hh=hx1-hx0+1,hy1-hy0+1
-        if not (w*.025<hw<w*.1 and .75<hw/hh<1.3 and .5<len(head)/(hw*hh)<.95):
-            continue
-        scale=(hw/head_width+hh/head_height)/2
-        left=(hx0+hx1)/2-(template_head_cx-xmin)*scale
-        upper=hy0-(head_top-ymin)*scale
-        right,bottom=left+(fw-1)*scale,upper+(fh-1)*scale
-        if left<0 or right>=w or upper<0 or bottom>=h:
-            continue
-        error=0
-        for tx,ty in sample:
-            sx,sy=round(left+(tx-xmin)*scale),round(upper+(ty-ymin)*scale)
-            a,b=rgb(template,tw,tx,ty),rgb(data,w,sx,sy)
-            error+=sum(abs(a[k]-b[k]) for k in range(3))/3
-        foot=((left+right)/2,round(bottom))
-        candidates.append((error/len(sample),foot,tuple(round(v) for v in (left,upper,right,bottom))))
+    def match_heads(heads):
+        for head in heads:
+            hx0,hx1=min(p%w for p in head),max(p%w for p in head)
+            hy0,hy1=min(p//w for p in head),max(p//w for p in head)
+            hw,hh=hx1-hx0+1,hy1-hy0+1
+            if not (w*.025<hw<w*.1 and .75<hw/hh<1.3 and .5<len(head)/(hw*hh)<.95):
+                continue
+            scale=(hw/head_width+hh/head_height)/2
+            left=(hx0+hx1)/2-(template_head_cx-xmin)*scale
+            upper=hy0-(head_top-ymin)*scale
+            right,bottom=left+(fw-1)*scale,upper+(fh-1)*scale
+            if left<0 or right>=w or upper<0 or bottom>=h:
+                continue
+            error=0
+            for tx,ty in sample:
+                sx,sy=round(left+(tx-xmin)*scale),round(upper+(ty-ymin)*scale)
+                a,b=rgb(template,tw,tx,ty),rgb(data,w,sx,sy)
+                error+=sum(abs(a[k]-b[k]) for k in range(3))/3
+            foot=((left+right)/2,round(bottom))
+            candidates.append((error/len(sample),foot,tuple(round(v) for v in (left,upper,right,bottom))))
+    match_heads(groups)
     for body in groups:
         x0, x1 = min(p%w for p in body), max(p%w for p in body)
         y0, y1 = min(p//w for p in body), max(p//w for p in body)
@@ -169,6 +171,15 @@ def find_piece(data, w, h, template_path):
                     a,b = rgb(template,tw,tx,ty), rgb(data,w,sx,sy)
                     error += sum(abs(a[k]-b[k]) for k in range(3))/3
                 candidates.append((error/len(sample), ((x0+x1)/2,y1), (left,hy0,right,y1)))
+    if not candidates or min(candidates)[0] > 45:
+        # 阴影也满足宽松的紫色条件，可能把头、身体和平台连成一块。
+        # 只在常规匹配失败时，用更深的棋子颜色拆分头部；仍核验完整模板。
+        dark_points = []
+        for point in points:
+            r, g, _ = rgb(data, w, point % w, point // w)
+            if r < 110 and g < 100:
+                dark_points.append(point)
+        match_heads([g for g in components(dark_points, w) if len(g) >= 8])
     if not candidates:
         raise ValueError('未找到棋子模板，请让游戏窗口完整显示且不要被其他窗口挡住。')
     error, foot, box = min(candidates)
