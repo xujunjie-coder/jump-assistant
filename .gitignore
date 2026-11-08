@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+jump_runs/
+piece.png
+jump_score_templates.json
